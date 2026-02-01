@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { UserData, CareerRecommendation, CareerDetails } from '../types';
 
@@ -68,11 +69,12 @@ const careerDetailsSchema = {
     required: ['whyThisCareerSuitsYou', 'courses', 'entranceExams', 'colleges', 'scholarships', 'careerRoadmap', 'scopeAndGrowth'],
 };
 
-// Fix: Per coding guidelines, the API key must be retrieved from process.env.API_KEY.
+// Fix: Per @google/genai guidelines, the API key must be obtained from process.env.API_KEY.
 const API_KEY = process.env.API_KEY;
 
 export async function getCareerRecommendations(userData: UserData): Promise<CareerRecommendation[]> {
   if (!API_KEY) {
+    // Fix: Updated error message to be consistent with using API_KEY from process.env.
     throw new Error("API_KEY is not configured for this application.");
   }
   const ai = new GoogleGenAI({ apiKey: API_KEY });
@@ -137,6 +139,7 @@ export async function getCareerRecommendations(userData: UserData): Promise<Care
 
 export async function getCareerDetails(careerName: string, userData: UserData): Promise<CareerDetails> {
     if (!API_KEY) {
+      // Fix: Updated error message to be consistent with using API_KEY from process.env.
       throw new Error("API_KEY is not configured for this application.");
     }
     const ai = new GoogleGenAI({ apiKey: API_KEY });

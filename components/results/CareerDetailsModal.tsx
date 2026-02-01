@@ -52,8 +52,9 @@ const CareerDetailsModal: React.FC<CareerDetailsModalProps> = ({ career, userDat
         const fetchedDetails = await getCareerDetails(career.careerName, userData);
         setDetails(fetchedDetails);
       } catch (e) {
+        // Fix: Updated error handling to check for "API_KEY" and show a consistent message.
         const errorMessage = e instanceof Error && e.message.includes("API_KEY")
-            ? "Application configuration error: The API key is missing. Please contact the administrator."
+            ? "Application configuration error: The API_KEY is missing. Please contact the administrator."
             : "Could not load career details. Please try again later.";
         setError(errorMessage);
         console.error(e);
