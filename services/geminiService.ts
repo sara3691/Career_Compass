@@ -1,8 +1,6 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { UserData, CareerRecommendation, CareerDetails } from '../types';
 
-const ai = import.meta.env.VITE_API_KEY;
-
 const careerRecommendationSchema = {
     type: Type.ARRAY,
     items: {
@@ -71,6 +69,13 @@ const careerDetailsSchema = {
 };
 
 export async function getCareerRecommendations(userData: UserData): Promise<CareerRecommendation[]> {
+  // Fix: Use process.env.API_KEY to access the API key as per guidelines.
+  if (!process.env.API_KEY) {
+    throw new Error("API_KEY is not configured for this application.");
+  }
+  // Fix: Use process.env.API_KEY to initialize GoogleGenAI.
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
   const systemInstruction = `You are a world-class career counselor for students who have just completed their +2 education in India. Your primary goal is to provide ACCURATE and REALISTIC career recommendations. You must follow these rules strictly:
 1.  **Hard Eligibility Filter**: A career is ONLY shown if the student is academically eligible. This is non-negotiable.
     -   Science Stream (PCM/PCMB) is required for Engineering.
@@ -127,6 +132,13 @@ export async function getCareerRecommendations(userData: UserData): Promise<Care
 }
 
 export async function getCareerDetails(careerName: string, userData: UserData): Promise<CareerDetails> {
+    // Fix: Use process.env.API_KEY to access the API key as per guidelines.
+    if (!process.env.API_KEY) {
+      throw new Error("API_KEY is not configured for this application.");
+    }
+    // Fix: Use process.env.API_KEY to initialize GoogleGenAI.
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    
     const prompt = `
     The user is interested in the career: "${careerName}".
     Based on their full profile below, generate detailed information for this career.

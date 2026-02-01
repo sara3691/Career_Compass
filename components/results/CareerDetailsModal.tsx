@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { CareerRecommendation, UserData, CareerDetails } from '../../types';
 import { getCareerDetails } from '../../services/geminiService';
@@ -53,7 +52,10 @@ const CareerDetailsModal: React.FC<CareerDetailsModalProps> = ({ career, userDat
         const fetchedDetails = await getCareerDetails(career.careerName, userData);
         setDetails(fetchedDetails);
       } catch (e) {
-        setError("Could not load career details. Please try again later.");
+        const errorMessage = e instanceof Error && e.message.includes("API_KEY")
+            ? "Application configuration error: The API key is missing. Please contact the administrator."
+            : "Could not load career details. Please try again later.";
+        setError(errorMessage);
         console.error(e);
       } finally {
         setIsLoading(false);
