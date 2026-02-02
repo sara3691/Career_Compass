@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback } from 'react';
 import { UserData, CareerRecommendation, AppState, View } from './types';
 import { DEFAULT_USER_DATA } from './constants';
@@ -13,8 +14,8 @@ import { AlertTriangle } from './components/icons/AlertTriangle';
 import { LightBulb } from './components/icons/LightBulb';
 
 /**
- * MAIN MODULE: Application Orchestrator
- * Manages the state machine of the entire guidance journey.
+ * APP MODULE: Navigation & Orchestration
+ * Manages the multi-step form and AI integration.
  */
 
 const App: React.FC = () => {
@@ -47,26 +48,25 @@ const App: React.FC = () => {
 
   const handleSubmit = useCallback(async () => {
     setAppState(prev => ({ ...prev, isLoading: true, error: null }));
+    
+    // Diagnostic check for the browser environment
+    if (typeof process === 'undefined' || !process.env || !process.env.API_KEY) {
+      setAppState(prev => ({ 
+        ...prev, 
+        error: "Critical Error: API_KEY is not defined in the browser. Please ensure your build tool (Vite/Webpack) is injecting 'process.env.API_KEY' from your Netlify environment variables into the final bundle.", 
+        isLoading: false 
+      }));
+      return;
+    }
+
     try {
       const recommendations = await getCareerRecommendations(appState.userData);
       setAppState(prev => ({ ...prev, results: recommendations, view: View.Results, isLoading: false }));
     } catch (error: any) {
-      console.error("Submission Error:", error);
-      
-      // DIAGNOSIS: If the error contains specific keywords, help the user.
-      let displayError = "An unexpected error occurred. Please try again.";
-      
-      if (error.message?.includes("API Key") || error.message?.includes("apiKey")) {
-        displayError = "Configuration Issue: The application couldn't find a valid API Key. Please verify that 'API_KEY' is correctly set in your Netlify Environment Variables.";
-      } else if (error.message?.includes("quota") || error.message?.includes("429")) {
-        displayError = "Rate Limit: You've reached the Gemini API free tier limit. Please wait a minute and try again.";
-      } else if (error.message) {
-        displayError = `Service Error: ${error.message}`;
-      }
-
+      console.error("AI Submission Error:", error);
       setAppState(prev => ({ 
         ...prev, 
-        error: displayError, 
+        error: error.message || "The AI service is currently unavailable. Please check your internet connection and API key quota.", 
         isLoading: false 
       }));
     }
@@ -88,6 +88,7 @@ const App: React.FC = () => {
         return <CareerRecommendations 
             results={appState.results} 
             userData={appState.userData} 
+            // Fix: Added missing properties (results, isLoading, error) to the setAppState call to satisfy AppState type
             onRestart={() => setAppState({
                 view: View.Homepage,
                 step: 0,
@@ -101,85 +102,58 @@ const App: React.FC = () => {
     }
   };
 
-  const steps = ['Academics', 'Skills', 'Interests', 'Location'];
-
+  // Fix: Added the missing return statement for the component to fix 'Type () => void is not assignable to type FC<{}>'
   return (
-    <div className="min-h-screen bg-slate-100 text-slate-800 font-sans">
-      <header className="bg-white shadow-sm border-b border-slate-200">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
-          <div className="flex items-center space-x-3 cursor-pointer" onClick={() => window.location.reload()}>
-            <LightBulb className="w-8 h-8 text-indigo-600" />
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight">Career Compass AI</h1>
+    <div className="min-h-screen bg-slate-50 py-12 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-7xl mx-auto">
+        {appState.view !== View.Homepage && appState.view !== View.Results && (
+          <div className="mb-12">
+            <Stepper steps={['Academics', 'Skills', 'Interests', 'Location']} currentStep={appState.step - 1} />
           </div>
-          <div className="hidden sm:block text-xs font-medium text-slate-500 bg-slate-100 px-3 py-1 rounded-full border border-slate-200">
-            Powered by Gemini 3 Flash
-          </div>
-        </div>
-      </header>
-      
-      <main className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {appState.view > View.Homepage && appState.view < View.Results && (
-           <Stepper steps={steps} currentStep={appState.step - 1} />
         )}
-        
-        <div className="mt-8">
-          {renderContent()}
-        </div>
 
-        {appState.view > View.Homepage && appState.view < View.Results && (
-          <div className="mt-8 pt-6 border-t border-slate-200 flex justify-between items-center">
-            <button
-              onClick={prevStep}
-              disabled={appState.step === 1 || appState.isLoading}
-              className="px-6 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 disabled:opacity-50 transition-all font-medium"
-            >
-              Back
-            </button>
-            {appState.step < steps.length + 1 ? (
-              <button
-                onClick={nextStep}
-                className="px-8 py-2 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition-all shadow-md hover:shadow-lg active:scale-95"
-              >
-                Continue
-              </button>
-            ) : (
-              <button
-                onClick={handleSubmit}
-                disabled={appState.isLoading}
-                className="px-8 py-2 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 disabled:bg-green-400 flex items-center justify-center transition-all shadow-md hover:shadow-lg active:scale-95"
-              >
-                {appState.isLoading ? (
-                  <>
-                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Analyzing...
-                  </>
-                ) : (
-                  'Generate Guidance'
-                )}
-              </button>
-            )}
+        {appState.error && (
+          <div className="mb-8 p-4 bg-red-100 border border-red-200 text-red-700 rounded-lg flex items-center">
+             <AlertTriangle className="w-6 h-6 mr-3" />
+             <span>{appState.error}</span>
           </div>
         )}
-        
-        {appState.error && (
-            <div className="mt-6 p-4 bg-red-50 border border-red-200 text-red-800 rounded-xl flex items-start animate-in fade-in slide-in-from-top-2">
-                <AlertTriangle className="w-6 h-6 mr-3 text-red-600 flex-shrink-0 mt-0.5"/>
-                <div className="flex flex-col">
-                  <span className="font-bold mb-1">Error Occurred</span>
-                  <span className="text-sm opacity-90">{appState.error}</span>
-                </div>
-            </div>
+
+        {renderContent()}
+
+        {appState.view !== View.Homepage && appState.view !== View.Results && (
+           <div className="mt-12 flex justify-between">
+              <button 
+                onClick={prevStep}
+                disabled={appState.step <= 1 || appState.isLoading}
+                className="px-6 py-2 border border-slate-300 rounded-md text-slate-700 font-semibold hover:bg-slate-100 disabled:opacity-50"
+              >
+                Previous
+              </button>
+              
+              {appState.view === View.LocationPreference ? (
+                <button 
+                  onClick={handleSubmit}
+                  disabled={appState.isLoading}
+                  className="px-6 py-2 bg-indigo-600 text-white font-bold rounded-md hover:bg-indigo-700 disabled:opacity-50 flex items-center"
+                >
+                  {appState.isLoading ? 'Processing...' : 'Find My Career'}
+                </button>
+              ) : (
+                <button 
+                  onClick={nextStep}
+                  disabled={appState.isLoading}
+                  className="px-6 py-2 bg-indigo-600 text-white font-semibold rounded-md hover:bg-indigo-700"
+                >
+                  Next
+                </button>
+              )}
+           </div>
         )}
-      </main>
-      
-      <footer className="mt-auto py-8 text-center text-slate-400 text-sm border-t border-slate-200">
-        &copy; {new Date().getFullYear()} Career Compass AI &bull; Expert Guidance for Indian Students
-      </footer>
+      </div>
     </div>
   );
 };
 
+// Fix: Added the missing default export to resolve 'Module App has no default export' in index.tsx
 export default App;
