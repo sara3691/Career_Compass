@@ -1,49 +1,74 @@
+
 import { UserData, CareerRecommendation, CareerDetails } from '../types';
 
 /**
  * FRONTEND MODULE: Career Guidance API Wrapper
- * All AI logic has been moved to secure Netlify Functions.
- * This file strictly handles the communication between the UI and the backend.
+ * All AI logic is offloaded to secure Netlify Functions.
+ * Implements a strict timeout to prevent infinite loading states.
  */
+
+const REQUEST_TIMEOUT = 12000; // 12 seconds (slightly longer than Netlify's 10s limit)
+
+async function fetchWithTimeout(url: string, options: RequestInit): Promise<Response> {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), REQUEST_TIMEOUT);
+  
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal
+    });
+    clearTimeout(id);
+    return response;
+  } catch (error: any) {
+    clearTimeout(id);
+    if (error.name === 'AbortError') {
+      throw new Error("TIMEOUT");
+    }
+    throw error;
+  }
+}
 
 export async function getCareerRecommendations(userData: UserData): Promise<CareerRecommendation[]> {
   try {
-    const response = await fetch('/.netlify/functions/gemini', {
+    const response = await fetchWithTimeout('/.netlify/functions/gemini', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'recommendations', userData }),
     });
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ error: 'Communication error with AI service' }));
-      throw new Error(errorData.error || `Server error: ${response.status}`);
+      const errorText = await response.text();
+      let msg = "AI_SERVICE_ERROR";
+      try {
+        const err = JSON.parse(errorText);
+        msg = err.error || msg;
+      } catch(e) {}
+      throw new Error(msg);
     }
 
-    const data = await response.json();
-    return data;
+    return await response.json();
   } catch (error: any) {
-    console.error("Frontend Service Error (Recommendations):", error);
-    throw error;
+    console.error("Gemini Service Error (Recommendations):", error.message);
+    throw error; // Re-throw to be handled by App.tsx fallback logic
   }
 }
 
 export async function getCareerDetails(careerName: string, userData: UserData): Promise<CareerDetails> {
   try {
-    const response = await fetch('/.netlify/functions/gemini', {
+    const response = await fetchWithTimeout('/.netlify/functions/gemini', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'details', careerName, userData }),
     });
 
     if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ error: 'Communication error with AI service' }));
-      throw new Error(errorData.error || `Server error: ${response.status}`);
+      throw new Error("AI_DETAILS_ERROR");
     }
 
-    const data = await response.json();
-    return data;
+    return await response.json();
   } catch (error: any) {
-    console.error("Frontend Service Error (Details):", error);
+    console.error("Gemini Service Error (Details):", error.message);
     throw error;
   }
 }

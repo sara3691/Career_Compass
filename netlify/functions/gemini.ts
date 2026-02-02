@@ -1,9 +1,9 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 
 /**
- * BACKEND MODULE: Gemini AI Controller (Netlify Serverless Function)
- * Acting as a Backend-Focused AI Architect.
- * This environment is the only place where the Google GenAI SDK and API keys are used.
+ * BACKEND MODULE: Gemini AI Controller
+ * Adheres to strict @google/genai SDK guidelines.
  */
 
 const careerRecommendationSchema = {
@@ -58,100 +58,97 @@ const careerDetailsSchema = {
   required: ['whyThisCareerSuitsYou', 'careerRoadmap', 'scopeAndGrowth', 'suggestedColleges', 'suggestedScholarships'],
 };
 
-// Execution timeout guard (Netlify limit is 10s)
-const AI_TIMEOUT = 8500; 
+// Netlify synchronous limit is 10s.
+const AI_TIMEOUT_MS = 8500; 
 
 export const handler = async (event: any) => {
   const requestId = Math.random().toString(36).substring(7);
-  console.log(`[${requestId}] Request Received: ${event.httpMethod}`);
+  console.log(`[${requestId}] Request Received`);
 
   if (event.httpMethod !== "POST") {
-    return { statusCode: 405, body: JSON.stringify({ error: "Method Not Allowed" }) };
+    return { statusCode: 405, body: "Method Not Allowed" };
   }
 
-  // Check for API Key in environment
-  const apiKey = process.env.VITE_API_KEY;
+  // Mandatory: process.env.API_KEY
+  const apiKey = process.env.API_KEY;
   if (!apiKey) {
-    console.error(`[${requestId}] CRITICAL: VITE_API_KEY environment variable is not set.`);
+    console.error(`[${requestId}] Config Error: API_KEY missing`);
     return { 
       statusCode: 500, 
-      body: JSON.stringify({ error: "Backend configuration error: API Key missing." }) 
+      body: JSON.stringify({ error: "API Key not configured in environment." }) 
     };
   }
 
   try {
-    const { action, userData, careerName } = JSON.parse(event.body);
+    const { action, userData, careerName } = JSON.parse(event.body || "{}");
     const ai = new GoogleGenAI({ apiKey });
 
-    // AI Execution wrapper with timeout
-    const runAI = async (model: string, contents: string, config: any) => {
-      const aiPromise = ai.models.generateContent({ model, contents, config });
+    const runAI = async (modelName: string, prompt: string, schema: any) => {
+      console.log(`[${requestId}] Calling model: ${modelName}`);
+      const aiPromise = ai.models.generateContent({ 
+        model: modelName, 
+        contents: prompt,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: schema,
+          temperature: 0.7,
+        }
+      });
+
       const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error("AI generation timed out (9s limit reached)")), AI_TIMEOUT)
+        setTimeout(() => reject(new Error("AI_TIMEOUT")), AI_TIMEOUT_MS)
       );
-      return Promise.race([aiPromise, timeoutPromise]) as Promise<any>;
+
+      return await Promise.race([aiPromise, timeoutPromise]) as any;
     };
 
     if (action === "recommendations") {
-      console.log(`[${requestId}] Action: recommendations`);
-      const prompt = `Student Profile:
-- Stream: ${userData.academics.stream}
-- Marks: ${userData.academics.marks}%
-- Skills: ${Object.entries(userData.skills).filter(([_,v]) => v).map(([k]) => k).join(', ')}
-- Interests: ${userData.interests.primary}
-- Location: ${userData.location.state}
+      const prompt = `Act as an expert Indian Career Counselor. 
+      Student Profile: ${userData.academics.stream} stream, ${userData.academics.marks}% marks. Interest: ${userData.interests.primary}.
+      Suggest 3-5 career paths. Output ONLY JSON matching the provided schema.`;
 
-Task: Recommend 3-5 career paths available to this student in the Indian context. 
-Return strictly valid JSON according to schema. 
-Ensure eligibility logic is followed (e.g., Medicine requires Science PCB).`;
-
-      const response = await runAI("gemini-3-flash-preview", prompt, {
-        systemInstruction: "You are an expert Indian Career Coach. Be realistic, encouraging, and precise. Always check stream eligibility before recommending.",
-        responseMimeType: "application/json",
-        responseSchema: careerRecommendationSchema,
-      });
-
+      const response = await runAI("gemini-3-flash-preview", prompt, careerRecommendationSchema);
+      
       return {
         statusCode: 200,
         headers: { "Content-Type": "application/json" },
-        body: response.text,
+        body: response.text || "[]",
       };
 
     } else if (action === "details") {
-      console.log(`[${requestId}] Action: details for ${careerName}`);
-      const prompt = `Career Path: ${careerName}
-User Context: ${userData.academics.marks}% in ${userData.academics.stream}. 
-Target State: ${userData.location.state}.
+      const prompt = `Detailed roadmap for ${careerName}. Context: ${userData.academics.marks}% in ${userData.academics.stream}. India location.`;
 
-Task: Act as a Backend-Focused AI Architect.
-1. Generate 3-4 suggested colleges as 'recommendations', not guarantees. Focus on State, Course, and Reputation.
-2. Generate 2-3 common scholarship schemes. Use cautious language ("commonly available", "merit-based options"). Avoid exact eligibility promises.
-3. Provide a roadmap and growth outlook.
-4. Add a disclaimer: 'Information is dynamic; verification with official sources is mandatory.'
-
-Output strictly valid JSON.`;
-
-      const response = await runAI("gemini-3-flash-preview", prompt, {
-        systemInstruction: "You are a backend-focused AI architect. Avoid fabricating rankings. Use phrases like 'popularly recommended' and 'frequently considered'.",
-        responseMimeType: 'application/json',
-        responseSchema: careerDetailsSchema,
-      });
+      const response = await runAI("gemini-3-flash-preview", prompt, careerDetailsSchema);
 
       return {
         statusCode: 200,
         headers: { "Content-Type": "application/json" },
-        body: response.text,
+        body: response.text || "{}",
       };
     }
 
-    return { statusCode: 400, body: JSON.stringify({ error: "Invalid Action" }) };
+    return { statusCode: 400, body: "Invalid Action" };
 
   } catch (error: any) {
-    console.error(`[${requestId}] Function Error:`, error.message);
+    console.error(`[${requestId}] Error:`, error.message);
+    
+    let statusCode = 500;
+    let errorMessage = "The AI advisor is temporarily unavailable.";
+
+    if (error.message === "AI_TIMEOUT") {
+      statusCode = 504;
+      errorMessage = "AI processing timed out. Switching to local database.";
+    } else if (error.message.includes("503") || error.message.includes("overloaded")) {
+      statusCode = 503;
+      errorMessage = "AI service is currently overloaded. Using local database fallback.";
+    }
+
     return {
-      statusCode: 500,
+      statusCode,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ error: error.message || "Failed to process AI request" }),
+      body: JSON.stringify({ error: errorMessage }),
     };
+  } finally {
+    console.log(`[${requestId}] Request Finalized`);
   }
 };

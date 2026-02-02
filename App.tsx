@@ -1,6 +1,7 @@
-import React, { useState, useCallback } from 'react';
-import { UserData, CareerRecommendation, AppState, View } from './types';
-import { DEFAULT_USER_DATA } from './constants';
+
+import React, { useState, useCallback, useRef, useEffect } from 'react';
+import { UserData, CareerRecommendation, AppState, View, Stream } from './types';
+import { DEFAULT_USER_DATA, COURSES_DATA } from './constants';
 import Stepper from './components/ui/Stepper';
 import Homepage from './components/steps/Homepage';
 import AcademicDetails from './components/steps/AcademicDetails';
@@ -11,11 +12,12 @@ import CareerRecommendations from './components/results/CareerRecommendations';
 import { getCareerRecommendations } from './services/geminiService';
 import { AlertTriangle } from './components/icons/AlertTriangle';
 import { LightBulb } from './components/icons/LightBulb';
+import { ArrowPath } from './components/icons/ArrowPath';
+import { XMark } from './components/icons/XMark';
 
 /**
  * APP MODULE: Navigation & State Management
- * This component orchestrates the user flow and communicates with the backend services.
- * All AI processing is offloaded to Netlify Functions for security and stability.
+ * Production-ready entry point with failsafe AI watchdog.
  */
 
 const App: React.FC = () => {
@@ -27,6 +29,32 @@ const App: React.FC = () => {
     isLoading: false,
     error: null,
   });
+
+  const isSubmitting = useRef(false);
+  const loadingTimer = useRef<number | null>(null);
+
+  // WATCHDOG: Safety net for stuck loading states
+  useEffect(() => {
+    if (appState.isLoading) {
+      loadingTimer.current = window.setTimeout(() => {
+        if (appState.isLoading) {
+          console.warn("Watchdog triggered: AI taking too long.");
+          setAppState(prev => ({ 
+            ...prev, 
+            isLoading: false, 
+            error: "The AI analysis is taking longer than expected. You can try again or use our standard database results." 
+          }));
+          isSubmitting.current = false;
+        }
+      }, 15000); // 15s absolute cutoff
+    } else {
+      if (loadingTimer.current) {
+        clearTimeout(loadingTimer.current);
+        loadingTimer.current = null;
+      }
+    }
+    return () => { if (loadingTimer.current) clearTimeout(loadingTimer.current); };
+  }, [appState.isLoading]);
 
   const updateUserData = (data: Partial<UserData>) => {
     setAppState(prev => ({ ...prev, userData: { ...prev.userData, ...data } }));
@@ -46,31 +74,75 @@ const App: React.FC = () => {
     setAppState(prev => ({...prev, view: View.AcademicDetails, step: 1}));
   };
 
+  /**
+   * FALLBACK ENGINE:
+   * Rules-based career matching used when AI is down or slow.
+   */
+  const getStaticRecommendations = (userData: UserData): CareerRecommendation[] => {
+    const stream = userData.academics.stream;
+    const primaryInterest = userData.interests.primary.toLowerCase();
+    
+    return Object.values(COURSES_DATA)
+      .filter(course => {
+        const eligibility = course.eligibility.toLowerCase();
+        const name = course.name.toLowerCase();
+        
+        const isScienceMatch = stream === Stream.Science && (eligibility.includes('pcm') || eligibility.includes('pcb') || eligibility.includes('science'));
+        const isCommerceMatch = stream === Stream.Commerce && (eligibility.includes('commerce') || eligibility.includes('any stream'));
+        const isArtsMatch = stream === Stream.Arts && eligibility.includes('any stream');
+        const isInterestMatch = primaryInterest && (name.includes(primaryInterest) || course.overview.toLowerCase().includes(primaryInterest));
+
+        return isScienceMatch || isCommerceMatch || isArtsMatch || isInterestMatch;
+      })
+      .slice(0, 4)
+      .map(course => ({
+        careerName: course.name,
+        matchPercentage: 85,
+        eligibilityStatus: 'Eligible',
+        riskLevel: course.riskLevel,
+        shortDescription: course.overview,
+        whyItMatches: `Aligned with your ${userData.academics.stream} background and ${userData.interests.primary} interest.`,
+        parentalAdvice: "A reliable professional path with proven long-term stability."
+      }));
+  };
+
   const handleSubmit = useCallback(async () => {
+    if (isSubmitting.current) return;
+    
+    isSubmitting.current = true;
     setAppState(prev => ({ ...prev, isLoading: true, error: null }));
     
     try {
       const recommendations = await getCareerRecommendations(appState.userData);
       
-      if (!recommendations || recommendations.length === 0) {
-        throw new Error("The AI advisor couldn't find matches for this specific profile. Try broadening your interests.");
-      }
-
       setAppState(prev => ({ 
         ...prev, 
         results: recommendations, 
         view: View.Results,
-        isLoading: false
+        isLoading: false,
+        error: null
       }));
     } catch (error: any) {
-      console.error("Guidance Submission Error:", error);
-      setAppState(prev => ({ 
-        ...prev, 
-        error: error.message || "The AI service is currently overloaded or misconfigured. Please try again in a few moments.",
-        isLoading: false 
-      }));
+      console.error("AI failure, using static fallback:", error.message);
+      const fallbackResults = getStaticRecommendations(appState.userData);
+      
+      if (fallbackResults.length > 0) {
+        setAppState(prev => ({ 
+          ...prev, 
+          results: fallbackResults, 
+          view: View.Results,
+          error: "Note: AI Advisor is currently busy. Showing matches from our standard database.",
+          isLoading: false
+        }));
+      } else {
+        setAppState(prev => ({ 
+          ...prev, 
+          error: "Connection failed. Please check your internet and try again.",
+          isLoading: false 
+        }));
+      }
     } finally {
-      setAppState(prev => ({ ...prev, isLoading: false }));
+      isSubmitting.current = false;
     }
   }, [appState.userData]);
 
@@ -90,14 +162,17 @@ const App: React.FC = () => {
         return <CareerRecommendations 
             results={appState.results} 
             userData={appState.userData} 
-            onRestart={() => setAppState({
-                view: View.Homepage,
-                step: 0,
-                userData: DEFAULT_USER_DATA,
-                results: [],
-                isLoading: false,
-                error: null,
-            })} />;
+            onRestart={() => {
+                isSubmitting.current = false;
+                setAppState({
+                    view: View.Homepage,
+                    step: 0,
+                    userData: DEFAULT_USER_DATA,
+                    results: [],
+                    isLoading: false,
+                    error: null,
+                });
+            }} />;
       default:
         return <Homepage onStart={startGuidance} />;
     }
@@ -125,11 +200,38 @@ const App: React.FC = () => {
         )}
 
         {appState.error && (
-          <div className="mb-8 p-5 bg-red-50 border border-red-200 text-red-800 rounded-2xl flex items-start animate-in fade-in slide-in-from-top-2">
-             <AlertTriangle className="w-6 h-6 mr-4 text-red-600 flex-shrink-0 mt-0.5" />
-             <div className="flex flex-col">
-                <span className="font-bold text-lg mb-1">Service Notification</span>
-                <span className="text-sm opacity-90 leading-relaxed">{appState.error}</span>
+          <div className="mb-8 p-6 bg-amber-50 border-l-4 border-amber-500 text-amber-800 rounded-r-2xl shadow-sm flex items-start animate-in fade-in slide-in-from-top-2">
+             <AlertTriangle className="w-7 h-7 mr-4 text-amber-600 flex-shrink-0 mt-0.5" />
+             <div className="flex-grow">
+                <div className="flex justify-between items-start">
+                    <span className="font-bold text-lg mb-1">Service Status</span>
+                    <button 
+                        onClick={() => setAppState(prev => ({ ...prev, error: null }))}
+                        className="text-amber-400 hover:text-amber-600 transition-colors"
+                    >
+                        <XMark className="w-5 h-5" />
+                    </button>
+                </div>
+                <p className="text-sm opacity-90 leading-relaxed mb-4">{appState.error}</p>
+                <div className="flex gap-3">
+                    <button 
+                        onClick={handleSubmit}
+                        disabled={appState.isLoading}
+                        className="inline-flex items-center px-4 py-2 bg-indigo-600 text-white text-xs font-bold rounded-lg hover:bg-indigo-700 transition-all shadow-md active:scale-95 disabled:opacity-50"
+                    >
+                        <ArrowPath className={`w-3.5 h-3.5 mr-2 ${appState.isLoading ? 'animate-spin' : ''}`} />
+                        {appState.isLoading ? 'Retrying...' : 'Retry AI Analysis'}
+                    </button>
+                    <button 
+                        onClick={() => {
+                            const results = getStaticRecommendations(appState.userData);
+                            setAppState(prev => ({ ...prev, results, view: View.Results, error: null }));
+                        }}
+                        className="inline-flex items-center px-4 py-2 bg-white border border-slate-300 text-slate-700 text-xs font-bold rounded-lg hover:bg-slate-50 transition-all"
+                    >
+                        Skip to Matches
+                    </button>
+                </div>
              </div>
           </div>
         )}
@@ -150,7 +252,7 @@ const App: React.FC = () => {
                 <button 
                   onClick={handleSubmit}
                   disabled={appState.isLoading}
-                  className="px-10 py-2.5 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 disabled:bg-green-400 flex items-center shadow-lg hover:shadow-xl active:scale-95 transition-all"
+                  className="px-10 py-2.5 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 disabled:bg-indigo-400 flex items-center shadow-lg hover:shadow-xl active:scale-95 transition-all"
                 >
                   {appState.isLoading ? (
                     <>
@@ -175,7 +277,7 @@ const App: React.FC = () => {
         )}
       </div>
       <footer className="mt-24 py-10 text-center text-slate-400 text-sm border-t border-slate-200">
-        &copy; {new Date().getFullYear()} Career Compass AI &bull; Secure AI-Powered Guidance
+        &copy; {new Date().getFullYear()} Career Compass AI &bull; Fault-Tolerant Architecture
       </footer>
     </div>
   );
