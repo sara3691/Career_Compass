@@ -14,7 +14,8 @@ import { LightBulb } from './components/icons/LightBulb';
 
 /**
  * APP MODULE: Navigation & State Management
- * This component orchestrates the user flow and communicates with the AI service.
+ * This component orchestrates the user flow and communicates with the backend services.
+ * All AI processing is offloaded to Netlify Functions for security and stability.
  */
 
 const App: React.FC = () => {
@@ -46,33 +47,29 @@ const App: React.FC = () => {
   };
 
   const handleSubmit = useCallback(async () => {
-    // 1. Set loading state
     setAppState(prev => ({ ...prev, isLoading: true, error: null }));
     
     try {
-      // 2. Call the direct AI service
       const recommendations = await getCareerRecommendations(appState.userData);
       
-      // 3. Update results and switch view
       if (!recommendations || recommendations.length === 0) {
-        throw new Error("No career paths found for your profile. Try adjusting your skills or interests.");
+        throw new Error("The AI advisor couldn't find matches for this specific profile. Try broadening your interests.");
       }
 
       setAppState(prev => ({ 
         ...prev, 
         results: recommendations, 
         view: View.Results,
-        isLoading: false // Explicitly clear loading before view change
+        isLoading: false
       }));
     } catch (error: any) {
       console.error("Guidance Submission Error:", error);
       setAppState(prev => ({ 
         ...prev, 
-        error: error.message || "An unexpected error occurred. Please check your connection and try again.",
+        error: error.message || "The AI service is currently overloaded or misconfigured. Please try again in a few moments.",
         isLoading: false 
       }));
     } finally {
-      // 4. Safety catch-all to ensure spinner always stops
       setAppState(prev => ({ ...prev, isLoading: false }));
     }
   }, [appState.userData]);
@@ -178,7 +175,7 @@ const App: React.FC = () => {
         )}
       </div>
       <footer className="mt-24 py-10 text-center text-slate-400 text-sm border-t border-slate-200">
-        &copy; {new Date().getFullYear()} Career Compass AI & bull; Secure AI-Powered Guidance
+        &copy; {new Date().getFullYear()} Career Compass AI &bull; Secure AI-Powered Guidance
       </footer>
     </div>
   );
