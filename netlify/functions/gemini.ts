@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 
 /**
@@ -59,8 +60,8 @@ const careerDetailsSchema = {
 };
 
 // Netlify synchronous functions have a hard 10s limit. 
-// We set AI timeout to 8.5s to allow for serialization and return.
-const AI_TIMEOUT_MS = 8500; 
+// We set AI timeout to 8s to allow for serialization and return.
+const AI_TIMEOUT_MS = 8000; 
 
 export const handler = async (event: any) => {
   const requestId = Math.random().toString(36).substring(7);
@@ -71,12 +72,13 @@ export const handler = async (event: any) => {
   }
 
   // CRITICAL: Mandatory environment variable use.
+  // Netlify uses process.env.API_KEY injected from Site Settings.
   const apiKey = process.env.API_KEY;
   if (!apiKey) {
-    console.error(`[${requestId}] Config Error: process.env.API_KEY is missing.`);
+    console.error(`[${requestId}] Config Error: API_KEY missing in Netlify environment variables.`);
     return { 
       statusCode: 500, 
-      body: JSON.stringify({ error: "Backend Configuration Error: API Key missing." }) 
+      body: JSON.stringify({ error: "API_KEY missing. Please configure it in Netlify Site Settings." }) 
     };
   }
 
@@ -86,13 +88,15 @@ export const handler = async (event: any) => {
 
     const runAI = async (modelName: string, prompt: string, schema: any) => {
       console.log(`[${requestId}] Running Model: ${modelName}`);
+      
+      // Use gemini-3-flash-preview as the production-ready stable model for these tasks
       const aiPromise = ai.models.generateContent({ 
         model: modelName, 
         contents: prompt,
         config: {
           responseMimeType: "application/json",
           responseSchema: schema,
-          temperature: 0.4, // Lower temperature for more consistent JSON
+          temperature: 0.4,
         }
       });
 
@@ -104,30 +108,40 @@ export const handler = async (event: any) => {
     };
 
     if (action === "recommendations") {
-      const prompt = `Student Profile: Stream ${userData.academics.stream}, Marks ${userData.academics.marks}%, Interest ${userData.interests.primary}.
-      Suggest 3-5 career paths in India. Output strictly valid JSON.`;
+      const prompt = `Act as an expert Indian Career Counselor. 
+      Student Profile: Stream ${userData.academics.stream}, Marks ${userData.academics.marks}%, Interest ${userData.interests.primary}.
+      Suggest 3-5 realistic career paths in India. You MUST include REAL career names and specific parental advice. 
+      Return strictly valid JSON only.`;
 
       const response = await runAI("gemini-3-flash-preview", prompt, careerRecommendationSchema);
-      const text = response.text; // property access (SDK v1.39.0+)
-
-      // Validate JSON before returning
-      try {
-        JSON.parse(text);
-        return {
-          statusCode: 200,
-          headers: { "Content-Type": "application/json" },
-          body: text,
-        };
-      } catch (jsonErr) {
-        console.error(`[${requestId}] JSON Parsing Error: AI returned invalid JSON string.`);
-        throw new Error("INVALID_AI_JSON");
+      
+      // Robust text extraction to prevent stuck "processing" state
+      const text = response.text ?? response.candidates?.[0]?.content?.parts?.[0]?.text;
+      
+      if (!text) {
+        throw new Error("No content returned from Gemini AI.");
       }
 
+      return {
+        statusCode: 200,
+        headers: { "Content-Type": "application/json" },
+        body: text,
+      };
+
     } else if (action === "details") {
-      const prompt = `Detailed roadmap for career: ${careerName}. Context: ${userData.academics.marks}% marks. Suggested colleges and scholarships in India.`;
+      const prompt = `Detailed roadmap for career: ${careerName}. Context: ${userData.academics.marks}% marks. 
+      You MUST include:
+      - At least 3 REAL colleges in India with city and type.
+      - At least 2 REAL Indian scholarships with provider name.
+      Do NOT leave colleges or scholarships empty.
+      Return strictly valid JSON only.`;
 
       const response = await runAI("gemini-3-flash-preview", prompt, careerDetailsSchema);
-      const text = response.text;
+      const text = response.text ?? response.candidates?.[0]?.content?.parts?.[0]?.text;
+
+      if (!text) {
+        throw new Error("No content returned from Gemini AI.");
+      }
 
       return {
         statusCode: 200,
@@ -136,7 +150,7 @@ export const handler = async (event: any) => {
       };
     }
 
-    return { statusCode: 400, body: JSON.stringify({ error: "Invalid Action Provided" }) };
+    return { statusCode: 400, body: JSON.stringify({ error: "Invalid Action" }) };
 
   } catch (error: any) {
     console.error(`[${requestId}] Fatal Error:`, error.message);
@@ -146,10 +160,10 @@ export const handler = async (event: any) => {
 
     if (error.message === "AI_TIMEOUT") {
       statusCode = 504;
-      friendlyMessage = "AI service timed out. Falling back to local data.";
+      friendlyMessage = "AI service timed out. Falling back to local guidance.";
     } else if (error.message.includes("503") || error.message.includes("overloaded")) {
       statusCode = 503;
-      friendlyMessage = "AI model is currently overloaded. Falling back to local data.";
+      friendlyMessage = "AI model is currently overloaded. Falling back to local guidance.";
     }
 
     return {
@@ -158,6 +172,6 @@ export const handler = async (event: any) => {
       body: JSON.stringify({ error: friendlyMessage }),
     };
   } finally {
-    console.log(`[${requestId}] Request Closed`);
+    console.log(`[${requestId}] Request Handled`);
   }
 };
