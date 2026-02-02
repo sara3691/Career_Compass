@@ -12,6 +12,11 @@ import { getCareerRecommendations } from './services/geminiService';
 import { AlertTriangle } from './components/icons/AlertTriangle';
 import { LightBulb } from './components/icons/LightBulb';
 
+/**
+ * MAIN MODULE: Application Orchestrator
+ * Manages the state machine of the entire guidance journey.
+ */
+
 const App: React.FC = () => {
   const [appState, setAppState] = useState<AppState>({
     view: View.Homepage,
@@ -47,11 +52,21 @@ const App: React.FC = () => {
       setAppState(prev => ({ ...prev, results: recommendations, view: View.Results, isLoading: false }));
     } catch (error: any) {
       console.error("Submission Error:", error);
-      // Show the specific error message from the API to help diagnose the issue.
-      const specificMessage = error.message || 'Unknown error occurred.';
+      
+      // DIAGNOSIS: If the error contains specific keywords, help the user.
+      let displayError = "An unexpected error occurred. Please try again.";
+      
+      if (error.message?.includes("API Key") || error.message?.includes("apiKey")) {
+        displayError = "Configuration Issue: The application couldn't find a valid API Key. Please verify that 'API_KEY' is correctly set in your Netlify Environment Variables.";
+      } else if (error.message?.includes("quota") || error.message?.includes("429")) {
+        displayError = "Rate Limit: You've reached the Gemini API free tier limit. Please wait a minute and try again.";
+      } else if (error.message) {
+        displayError = `Service Error: ${error.message}`;
+      }
+
       setAppState(prev => ({ 
         ...prev, 
-        error: `Error: ${specificMessage}. Please check if your API_KEY is set in your hosting platform (Netlify) as an environment variable.`, 
+        error: displayError, 
         isLoading: false 
       }));
     }
@@ -90,14 +105,18 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-slate-100 text-slate-800 font-sans">
-      <header className="bg-white shadow-md">
+      <header className="bg-white shadow-sm border-b border-slate-200">
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center space-x-3 cursor-pointer" onClick={() => window.location.reload()}>
             <LightBulb className="w-8 h-8 text-indigo-600" />
-            <h1 className="text-2xl font-bold text-slate-900">Career Compass AI</h1>
+            <h1 className="text-xl font-bold text-slate-900 tracking-tight">Career Compass AI</h1>
+          </div>
+          <div className="hidden sm:block text-xs font-medium text-slate-500 bg-slate-100 px-3 py-1 rounded-full border border-slate-200">
+            Powered by Gemini 3 Flash
           </div>
         </div>
       </header>
+      
       <main className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {appState.view > View.Homepage && appState.view < View.Results && (
            <Stepper steps={steps} currentStep={appState.step - 1} />
@@ -111,23 +130,23 @@ const App: React.FC = () => {
           <div className="mt-8 pt-6 border-t border-slate-200 flex justify-between items-center">
             <button
               onClick={prevStep}
-              disabled={appState.step === 1}
-              className="px-6 py-2 bg-slate-300 text-slate-700 rounded-lg hover:bg-slate-400 disabled:bg-slate-200 disabled:cursor-not-allowed transition-colors"
+              disabled={appState.step === 1 || appState.isLoading}
+              className="px-6 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 disabled:opacity-50 transition-all font-medium"
             >
               Back
             </button>
             {appState.step < steps.length + 1 ? (
               <button
                 onClick={nextStep}
-                className="px-6 py-2 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition-colors"
+                className="px-8 py-2 bg-indigo-600 text-white font-semibold rounded-lg hover:bg-indigo-700 transition-all shadow-md hover:shadow-lg active:scale-95"
               >
-                Next
+                Continue
               </button>
             ) : (
               <button
                 onClick={handleSubmit}
                 disabled={appState.isLoading}
-                className="px-6 py-2 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 disabled:bg-green-400 flex items-center justify-center"
+                className="px-8 py-2 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 disabled:bg-green-400 flex items-center justify-center transition-all shadow-md hover:shadow-lg active:scale-95"
               >
                 {appState.isLoading ? (
                   <>
@@ -135,22 +154,30 @@ const App: React.FC = () => {
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
-                    Generating...
+                    Analyzing...
                   </>
                 ) : (
-                  'Get Recommendations'
+                  'Generate Guidance'
                 )}
               </button>
             )}
           </div>
         )}
+        
         {appState.error && (
-            <div className="mt-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded-lg flex items-center">
-                <AlertTriangle className="w-6 h-6 mr-3"/>
-                <span>{appState.error}</span>
+            <div className="mt-6 p-4 bg-red-50 border border-red-200 text-red-800 rounded-xl flex items-start animate-in fade-in slide-in-from-top-2">
+                <AlertTriangle className="w-6 h-6 mr-3 text-red-600 flex-shrink-0 mt-0.5"/>
+                <div className="flex flex-col">
+                  <span className="font-bold mb-1">Error Occurred</span>
+                  <span className="text-sm opacity-90">{appState.error}</span>
+                </div>
             </div>
         )}
       </main>
+      
+      <footer className="mt-auto py-8 text-center text-slate-400 text-sm border-t border-slate-200">
+        &copy; {new Date().getFullYear()} Career Compass AI &bull; Expert Guidance for Indian Students
+      </footer>
     </div>
   );
 };

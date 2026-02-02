@@ -1,6 +1,11 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { UserData, CareerRecommendation, CareerDetails } from '../types';
 
+/**
+ * MODULE 2: Intelligence Service
+ * Handles all AI interactions with strict schema enforcement.
+ */
+
 const careerRecommendationSchema = {
     type: Type.ARRAY,
     items: {
@@ -12,7 +17,7 @@ const careerRecommendationSchema = {
         riskLevel: { type: Type.STRING, enum: ['Low', 'Medium', 'High'] },
         shortDescription: { type: Type.STRING },
         whyItMatches: { type: Type.STRING },
-        parentalAdvice: { type: Type.STRING, description: "Advice for parents about this career, focusing on safety, cost, job stability, and growth, in simple, non-technical language." },
+        parentalAdvice: { type: Type.STRING, description: "Advice for parents focusing on job stability, cost, and safety." },
       },
       required: ['careerName', 'matchPercentage', 'eligibilityStatus', 'riskLevel', 'shortDescription', 'whyItMatches', 'parentalAdvice'],
     },
@@ -69,27 +74,26 @@ const careerDetailsSchema = {
 };
 
 export async function getCareerRecommendations(userData: UserData): Promise<CareerRecommendation[]> {
-  // Always create a new instance inside the function to ensure the correct API key is picked up from process.env.
+  // Use process.env.API_KEY directly as required. 
+  // Note: For client-side apps, ensure your build tool defines this.
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-  const systemInstruction = `You are a world-class career counselor for Indian students after +2. 
-Rules:
-1. Hard Eligibility Filter: Science (PCM/B) for Engineering/Medical, Commerce for Finance, Arts for Humanities.
-2. If failed (<35%), suggest only vocational training.
-3. Align with student interests and skills.
-4. Output must be strictly JSON.`;
+  const systemInstruction = `You are an elite Indian career counselor for students after 12th grade.
+STRICT RULES:
+1. Eligibility: Only Science students can do Engineering/MBBS. Commerce students for CA/Finance.
+2. If marks < 35%, student is 'Not Eligible' for degree courses; suggest vocational/diploma.
+3. Use the student's listed skills to calculate 'matchPercentage'.
+4. Output must be valid JSON matching the provided schema.`;
 
-  const prompt = `
-    Analyze this student profile and generate 3 to 5 career recommendations in JSON.
-    Board: ${userData.academics.board}
-    Stream: ${userData.academics.stream}
-    Subjects: ${userData.academics.subjects.join(', ')}
-    Marks: ${userData.academics.marks}%
-    Status: ${userData.academics.passed ? 'Pass' : 'Fail'}
-    Skills: ${Object.entries(userData.skills).filter(([, v]) => v).map(([k]) => k).join(', ')}
-    Interests: ${userData.interests.primary}
-    State: ${userData.location.state}
-  `;
+  const prompt = `Analyze this profile:
+Stream: ${userData.academics.stream}
+Subjects: ${userData.academics.subjects.join(', ')}
+Marks: ${userData.academics.marks}%
+Skills: ${Object.entries(userData.skills).filter(([_,v]) => v).map(([k]) => k).join(', ')}
+Interests: ${userData.interests.primary}
+State: ${userData.location.state}
+
+Recommend 3-5 career paths.`;
 
   try {
     const response = await ai.models.generateContent({
@@ -103,20 +107,20 @@ Rules:
     });
     
     return JSON.parse(response.text || '[]');
-  } catch (error) {
-    console.error("Gemini API Error:", error);
-    throw error;
+  } catch (error: any) {
+    console.error("Gemini AI API Error:", error);
+    // Re-throwing so the UI can catch and display a helpful message.
+    throw new Error(error.message || "Failed to fetch recommendations");
   }
 }
 
 export async function getCareerDetails(careerName: string, userData: UserData): Promise<CareerDetails> {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
-    const prompt = `
-    Provide detailed roadmap and info for: "${careerName}".
-    Context: Stream ${userData.academics.stream}, Marks ${userData.academics.marks}%, Location ${userData.location.state}.
-    Suggest real Indian colleges and exams.
-    `;
+    const prompt = `Provide deep-dive details for the career: "${careerName}".
+Student Context: ${userData.academics.stream} stream, based in ${userData.location.state}.
+Include real Indian colleges, exams (like JEE, NEET, CUET), and scholarships.
+Personalize "whyThisCareerSuitsYou" using their skills: ${Object.entries(userData.skills).filter(([_,v]) => v).map(([k]) => k).join(', ')}.`;
 
     try {
         const response = await ai.models.generateContent({
@@ -129,8 +133,8 @@ export async function getCareerDetails(careerName: string, userData: UserData): 
         });
 
         return JSON.parse(response.text || '{}');
-    } catch (error) {
+    } catch (error: any) {
         console.error('Gemini Details API Error:', error);
-        throw error;
+        throw new Error(error.message || "Failed to fetch career details");
     }
 }
