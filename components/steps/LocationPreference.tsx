@@ -45,7 +45,7 @@ const LocationPreference: React.FC<LocationPreferenceProps> = ({ data, onUpdate 
                     <select
                         value={localData.state}
                         onChange={(e) => handleStateChange(e.target.value)}
-                        className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                        className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 text-slate-900"
                     >
                         <option value="">Select a state</option>
                         {Object.keys(INDIAN_STATES).map(state => <option key={state} value={state}>{state}</option>)}

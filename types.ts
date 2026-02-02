@@ -23,6 +23,9 @@ export interface AcademicDetails {
   subjects: string[];
   marks: number;
   passed: boolean;
+  category?: 'General' | 'OBC' | 'SC' | 'ST' | 'Minority';
+  gender?: 'Male' | 'Female' | 'Other';
+  familyIncome?: number;
 }
 
 export interface Skills {
@@ -65,33 +68,57 @@ export interface CareerRecommendation {
 
 export interface Course {
     name: string;
+    overview: string;
     duration: string;
-    description: string;
+    eligibility: string;
+    jobRoles: string[];
+    riskLevel: 'Low' | 'Medium' | 'High';
 }
 
+/**
+ * Added College interface to fix missing export error in constants.ts
+ */
 export interface College {
-    name: string;
-    location: string;
-    courseOffered: string;
-    fees: string;
-    eligibility: string;
+  name: string;
+  location: string;
+  state: string;
+  district?: string;
+  type: string;
+  reputation: string;
+  courseOffered: string;
 }
 
+/**
+ * Added Scholarship interface to fix missing export error in constants.ts
+ */
 export interface Scholarship {
-    name: string;
-    provider: string;
-    eligibility: string;
-    amount: string;
+  name: string;
+  provider: string;
+  amount: string;
+  eligibleCourses: string[];
+  minMarks: number;
+  incomeLimit?: number;
+  category: string[];
+  level: string;
+  applicationMode: string;
+  gender?: string;
 }
 
 export interface CareerDetails {
   whyThisCareerSuitsYou: string;
-  courses: Course[];
-  entranceExams: string[];
-  colleges: College[];
-  scholarships: Scholarship[];
   careerRoadmap: string[];
   scopeAndGrowth: string;
+  suggestedColleges: {
+    name: string;
+    location: string;
+    type: string;
+    reasoning: string;
+  }[];
+  suggestedScholarships: {
+    name: string;
+    provider: string;
+    typicalEligibility: string;
+  }[];
 }
 
 export interface AppState {

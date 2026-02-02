@@ -14,7 +14,7 @@ import { LightBulb } from './components/icons/LightBulb';
 
 /**
  * APP MODULE: Navigation & State Management
- * This component orchestrates the user flow and communicates with the secure backend gateway.
+ * This component orchestrates the user flow and communicates with the AI service.
  */
 
 const App: React.FC = () => {
@@ -46,20 +46,34 @@ const App: React.FC = () => {
   };
 
   const handleSubmit = useCallback(async () => {
+    // 1. Set loading state
     setAppState(prev => ({ ...prev, isLoading: true, error: null }));
     
     try {
-      // The frontend now calls the Netlify Function gateway instead of using the AI SDK directly.
-      // This is secure and avoids browser-side environment variable issues.
+      // 2. Call the direct AI service
       const recommendations = await getCareerRecommendations(appState.userData);
-      setAppState(prev => ({ ...prev, results: recommendations, view: View.Results, isLoading: false }));
-    } catch (error: any) {
-      console.error("Guidance Error:", error);
+      
+      // 3. Update results and switch view
+      if (!recommendations || recommendations.length === 0) {
+        throw new Error("No career paths found for your profile. Try adjusting your skills or interests.");
+      }
+
       setAppState(prev => ({ 
         ...prev, 
-        error: error.message || "Failed to generate recommendations. Please check your network and try again.", 
+        results: recommendations, 
+        view: View.Results,
+        isLoading: false // Explicitly clear loading before view change
+      }));
+    } catch (error: any) {
+      console.error("Guidance Submission Error:", error);
+      setAppState(prev => ({ 
+        ...prev, 
+        error: error.message || "An unexpected error occurred. Please check your connection and try again.",
         isLoading: false 
       }));
+    } finally {
+      // 4. Safety catch-all to ensure spinner always stops
+      setAppState(prev => ({ ...prev, isLoading: false }));
     }
   }, [appState.userData]);
 
@@ -117,7 +131,7 @@ const App: React.FC = () => {
           <div className="mb-8 p-5 bg-red-50 border border-red-200 text-red-800 rounded-2xl flex items-start animate-in fade-in slide-in-from-top-2">
              <AlertTriangle className="w-6 h-6 mr-4 text-red-600 flex-shrink-0 mt-0.5" />
              <div className="flex flex-col">
-                <span className="font-bold text-lg mb-1">Service Error</span>
+                <span className="font-bold text-lg mb-1">Service Notification</span>
                 <span className="text-sm opacity-90 leading-relaxed">{appState.error}</span>
              </div>
           </div>
@@ -164,7 +178,7 @@ const App: React.FC = () => {
         )}
       </div>
       <footer className="mt-24 py-10 text-center text-slate-400 text-sm border-t border-slate-200">
-        &copy; {new Date().getFullYear()} Career Compass AI &bull; Secure AI-Powered Roadmap System
+        &copy; {new Date().getFullYear()} Career Compass AI & bull; Secure AI-Powered Guidance
       </footer>
     </div>
   );

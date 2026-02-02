@@ -2,8 +2,7 @@ import { GoogleGenAI, Type } from "@google/genai";
 
 /**
  * BACKEND MODULE: Gemini AI Controller (Netlify Serverless Function)
- * This function handles all AI reasoning on the server.
- * It uses the Google GenAI SDK with the secure environment variable.
+ * Refactored for extreme speed and reliability.
  */
 
 const careerRecommendationSchema = {
@@ -27,93 +26,54 @@ const careerDetailsSchema = {
   type: Type.OBJECT,
   properties: {
     whyThisCareerSuitsYou: { type: Type.STRING },
-    courses: { 
-      type: Type.ARRAY,
-      items: {
-        type: Type.OBJECT,
-        properties: {
-          name: { type: Type.STRING },
-          duration: { type: Type.STRING },
-          description: { type: Type.STRING },
-        },
-        required: ['name', 'duration', 'description'],
-      }
-    },
-    entranceExams: { type: Type.ARRAY, items: { type: Type.STRING } },
-    colleges: {
-      type: Type.ARRAY,
-      items: {
-        type: Type.OBJECT,
-        properties: {
-          name: { type: Type.STRING },
-          location: { type: Type.STRING },
-          courseOffered: { type: Type.STRING },
-          fees: { type: Type.STRING },
-          eligibility: { type: Type.STRING },
-        },
-        required: ['name', 'location', 'courseOffered', 'fees', 'eligibility'],
-      }
-    },
-    scholarships: {
-      type: Type.ARRAY,
-      items: {
-        type: Type.OBJECT,
-        properties: {
-          name: { type: Type.STRING },
-          provider: { type: Type.STRING },
-          eligibility: { type: Type.STRING },
-          amount: { type: Type.STRING },
-        },
-        required: ['name', 'provider', 'eligibility', 'amount'],
-      }
-    },
     careerRoadmap: { type: Type.ARRAY, items: { type: Type.STRING } },
     scopeAndGrowth: { type: Type.STRING },
   },
-  required: ['whyThisCareerSuitsYou', 'courses', 'entranceExams', 'colleges', 'scholarships', 'careerRoadmap', 'scopeAndGrowth'],
+  required: ['whyThisCareerSuitsYou', 'careerRoadmap', 'scopeAndGrowth'],
 };
 
+// Execution timeout guard (Netlify limit is usually 10s)
+const AI_TIMEOUT = 8000; 
+
 export const handler = async (event: any) => {
-  // CORS and Method safety
+  console.log("[Gemini Function] Received request:", event.body?.substring(0, 100));
+
   if (event.httpMethod !== "POST") {
     return { statusCode: 405, body: JSON.stringify({ error: "Method Not Allowed" }) };
   }
 
   try {
     const { action, userData, careerName } = JSON.parse(event.body);
-    
-    // Use the secure environment variable directly in the server environment
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-    if (action === "recommendations") {
-      const systemInstruction = `You are a professional Indian Career Counselor. 
-Strictly follow Indian academic eligibility:
-- Science (PCM): Engineering, B.Sc Maths/Physics.
-- Science (PCB): MBBS, BDS, Nursing, B.Sc Biology.
-- Commerce: CA, CS, B.Com, MBA.
-- Arts: Law, Design, Humanities.
-- Marks < 35%: Not eligible for degrees, suggest Vocational Skills.
-Respond only in valid JSON.`;
+    // Function to run AI with a timeout
+    const runAI = async (model: string, contents: string, config: any) => {
+      const aiPromise = ai.models.generateContent({ model, contents, config });
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error("AI generation timed out")), AI_TIMEOUT)
+      );
+      return Promise.race([aiPromise, timeoutPromise]) as Promise<any>;
+    };
 
-      const prompt = `Analyze this profile:
+    if (action === "recommendations") {
+      const prompt = `Student Profile:
 Stream: ${userData.academics.stream}
 Marks: ${userData.academics.marks}%
 Skills: ${Object.entries(userData.skills).filter(([_,v]) => v).map(([k]) => k).join(', ')}
 Interests: ${userData.interests.primary}
 Location: ${userData.location.state}
 
-Recommend 3-5 career paths.`;
+Task: Recommend 3-5 career paths available to this student. 
+Return strictly valid JSON according to schema. 
+Focus on realistic Indian context paths.`;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: prompt,
-        config: {
-          systemInstruction,
-          responseMimeType: "application/json",
-          responseSchema: careerRecommendationSchema,
-        },
+      const response = await runAI("gemini-3-flash-preview", prompt, {
+        systemInstruction: "You are an expert Indian Career Coach. Be precise and encouraging.",
+        responseMimeType: "application/json",
+        responseSchema: careerRecommendationSchema,
       });
 
+      console.log("[Gemini Function] Recommendations generated successfully.");
       return {
         statusCode: 200,
         headers: { "Content-Type": "application/json" },
@@ -121,18 +81,20 @@ Recommend 3-5 career paths.`;
       };
 
     } else if (action === "details") {
-      const prompt = `Detailed roadmap for: "${careerName}" for an Indian student in ${userData.location.state}.
-Include real exams (JEE, NEET, CUET), real colleges, and scholarships.`;
+      const prompt = `Career Path: ${careerName}
+User Profile: Marks ${userData.academics.marks}%, Stream ${userData.academics.stream}, Primary Interest ${userData.interests.primary}.
+Location: ${userData.location.state}.
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: prompt,
-        config: {
-          responseMimeType: 'application/json',
-          responseSchema: careerDetailsSchema,
-        },
+Task: Provide personalized reasoning why this suits them, a 5-step roadmap, and future growth perspective.
+Do NOT include college or scholarship names - those are handled elsewhere. 
+Strictly valid JSON.`;
+
+      const response = await runAI("gemini-3-flash-preview", prompt, {
+        responseMimeType: 'application/json',
+        responseSchema: careerDetailsSchema,
       });
 
+      console.log("[Gemini Function] Personalized details generated successfully.");
       return {
         statusCode: 200,
         headers: { "Content-Type": "application/json" },
@@ -140,14 +102,14 @@ Include real exams (JEE, NEET, CUET), real colleges, and scholarships.`;
       };
     }
 
-    return { statusCode: 400, body: JSON.stringify({ error: "Invalid Action Provided" }) };
+    return { statusCode: 400, body: JSON.stringify({ error: "Invalid Action" }) };
 
   } catch (error: any) {
-    console.error("Backend Error:", error);
+    console.error("[Gemini Function] Error:", error.message);
     return {
       statusCode: 500,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ error: error.message || "Internal server error during AI processing" }),
+      body: JSON.stringify({ error: error.message || "Failed to process AI request" }),
     };
   }
 };

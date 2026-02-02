@@ -45,7 +45,7 @@ const InterestSelection: React.FC<InterestSelectionProps> = ({ stream, data, onU
                     <select
                         value={localData.primary}
                         onChange={(e) => handleChange('primary', e.target.value)}
-                        className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                        className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 text-slate-900"
                     >
                         <option value="">Select an interest</option>
                         {interestOptions.map(interest => <option key={interest} value={interest}>{interest}</option>)}
@@ -61,7 +61,7 @@ const InterestSelection: React.FC<InterestSelectionProps> = ({ stream, data, onU
                         value={localData.other}
                         onChange={(e) => handleChange('other', e.target.value)}
                         placeholder="e.g., Creative Writing, Robotics"
-                        className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500"
+                        className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 text-slate-900"
                     />
                     <p className="mt-1 text-xs text-slate-500">Our AI will understand your intent even with spelling variations.</p>
                 </div>
