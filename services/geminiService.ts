@@ -1,13 +1,12 @@
-
 import { UserData, CareerRecommendation, CareerDetails } from '../types';
 
 /**
  * FRONTEND MODULE: Career Guidance API Wrapper
  * All AI logic is offloaded to secure Netlify Functions.
- * Implements a strict timeout to prevent infinite loading states.
+ * Implements strict AbortController for reliability.
  */
 
-const REQUEST_TIMEOUT = 12000; // 12 seconds (slightly longer than Netlify's 10s limit)
+const REQUEST_TIMEOUT = 11000; // 11 seconds (slightly over backend timeout)
 
 async function fetchWithTimeout(url: string, options: RequestInit): Promise<Response> {
   const controller = new AbortController();
@@ -23,7 +22,7 @@ async function fetchWithTimeout(url: string, options: RequestInit): Promise<Resp
   } catch (error: any) {
     clearTimeout(id);
     if (error.name === 'AbortError') {
-      throw new Error("TIMEOUT");
+      throw new Error("CLIENT_TIMEOUT");
     }
     throw error;
   }
@@ -37,20 +36,16 @@ export async function getCareerRecommendations(userData: UserData): Promise<Care
       body: JSON.stringify({ action: 'recommendations', userData }),
     });
 
+    const data = await response.json();
+
     if (!response.ok) {
-      const errorText = await response.text();
-      let msg = "AI_SERVICE_ERROR";
-      try {
-        const err = JSON.parse(errorText);
-        msg = err.error || msg;
-      } catch(e) {}
-      throw new Error(msg);
+      throw new Error(data.error || "AI_SERVICE_UNAVAILABLE");
     }
 
-    return await response.json();
+    return data;
   } catch (error: any) {
     console.error("Gemini Service Error (Recommendations):", error.message);
-    throw error; // Re-throw to be handled by App.tsx fallback logic
+    throw error; 
   }
 }
 
@@ -62,11 +57,13 @@ export async function getCareerDetails(careerName: string, userData: UserData): 
       body: JSON.stringify({ action: 'details', careerName, userData }),
     });
 
+    const data = await response.json();
+
     if (!response.ok) {
-      throw new Error("AI_DETAILS_ERROR");
+      throw new Error(data.error || "AI_DETAILS_ERROR");
     }
 
-    return await response.json();
+    return data;
   } catch (error: any) {
     console.error("Gemini Service Error (Details):", error.message);
     throw error;
