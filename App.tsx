@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback } from 'react';
 import { UserData, CareerRecommendation, AppState, View } from './types';
 import { DEFAULT_USER_DATA } from './constants';
@@ -48,11 +47,11 @@ const App: React.FC = () => {
       setAppState(prev => ({ ...prev, results: recommendations, view: View.Results, isLoading: false }));
     } catch (error) {
       console.error("Error fetching recommendations:", error);
-      // Fix: Updated error handling to check for "API_KEY" and show a consistent message.
-      const errorMessage = error instanceof Error && error.message.includes("API_KEY")
-        ? "Application configuration error: The API_KEY is missing. Please check your deployment settings."
-        : 'Failed to generate career recommendations. Please check your inputs and try again.';
-      setAppState(prev => ({ ...prev, error: errorMessage, isLoading: false }));
+      setAppState(prev => ({ 
+        ...prev, 
+        error: 'The service is temporarily unavailable or your configuration is missing. Please ensure your API_KEY is set correctly in the environment.', 
+        isLoading: false 
+      }));
     }
   }, [appState.userData]);
 
