@@ -45,11 +45,13 @@ const App: React.FC = () => {
     try {
       const recommendations = await getCareerRecommendations(appState.userData);
       setAppState(prev => ({ ...prev, results: recommendations, view: View.Results, isLoading: false }));
-    } catch (error) {
-      console.error("Error fetching recommendations:", error);
+    } catch (error: any) {
+      console.error("Submission Error:", error);
+      // Show the specific error message from the API to help diagnose the issue.
+      const specificMessage = error.message || 'Unknown error occurred.';
       setAppState(prev => ({ 
         ...prev, 
-        error: 'The service is temporarily unavailable or your configuration is missing. Please ensure your API_KEY is set correctly in the environment.', 
+        error: `Error: ${specificMessage}. Please check if your API_KEY is set in your hosting platform (Netlify) as an environment variable.`, 
         isLoading: false 
       }));
     }

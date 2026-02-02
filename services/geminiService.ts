@@ -69,24 +69,23 @@ const careerDetailsSchema = {
 };
 
 export async function getCareerRecommendations(userData: UserData): Promise<CareerRecommendation[]> {
-  // Directly initializing with process.env.API_KEY as per coding guidelines.
+  // Always create a new instance inside the function to ensure the correct API key is picked up from process.env.
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-  const systemInstruction = `You are a world-class career counselor for students who have just completed their +2 education in India. Your primary goal is to provide ACCURATE and REALISTIC career recommendations. You must follow these rules strictly:
-1.  **Hard Eligibility Filter**: A career is ONLY shown if the student is academically eligible. 
-    -   Science Stream (PCM/PCMB) is required for Engineering.
-    -   Science Stream (PCB/PCMB) is required for Medical.
-    -   Commerce stream is required for CA/Business.
-2.  **Interest Match**: Align with the student's stated interests.
-3.  **Dynamic Generation**: Generate 3 to 5 diverse recommendations.
-4.  **Skills Influence**: Use skills to rank recommendations and explain 'whyItMatches'.`;
+  const systemInstruction = `You are a world-class career counselor for Indian students after +2. 
+Rules:
+1. Hard Eligibility Filter: Science (PCM/B) for Engineering/Medical, Commerce for Finance, Arts for Humanities.
+2. If failed (<35%), suggest only vocational training.
+3. Align with student interests and skills.
+4. Output must be strictly JSON.`;
 
   const prompt = `
-    Analyze this profile and generate 3-5 career recommendations in JSON.
+    Analyze this student profile and generate 3 to 5 career recommendations in JSON.
     Board: ${userData.academics.board}
     Stream: ${userData.academics.stream}
     Subjects: ${userData.academics.subjects.join(', ')}
     Marks: ${userData.academics.marks}%
+    Status: ${userData.academics.passed ? 'Pass' : 'Fail'}
     Skills: ${Object.entries(userData.skills).filter(([, v]) => v).map(([k]) => k).join(', ')}
     Interests: ${userData.interests.primary}
     State: ${userData.location.state}
@@ -105,7 +104,7 @@ export async function getCareerRecommendations(userData: UserData): Promise<Care
     
     return JSON.parse(response.text || '[]');
   } catch (error) {
-    console.error("Gemini API call failed:", error);
+    console.error("Gemini API Error:", error);
     throw error;
   }
 }
@@ -114,10 +113,9 @@ export async function getCareerDetails(careerName: string, userData: UserData): 
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
     const prompt = `
-    Generate detailed info for career: "${careerName}".
-    Student Profile: Stream - ${userData.academics.stream}, Subjects - ${userData.academics.subjects.join(', ')}, Marks - ${userData.academics.marks}%
-    Location Preference: State - ${userData.location.state}, Anywhere in India - ${userData.location.anywhereInIndia}
-    Generate realistically, including actual colleges and entrance exams in India.
+    Provide detailed roadmap and info for: "${careerName}".
+    Context: Stream ${userData.academics.stream}, Marks ${userData.academics.marks}%, Location ${userData.location.state}.
+    Suggest real Indian colleges and exams.
     `;
 
     try {
@@ -132,7 +130,7 @@ export async function getCareerDetails(careerName: string, userData: UserData): 
 
         return JSON.parse(response.text || '{}');
     } catch (error) {
-        console.error('Gemini API call for details failed:', error);
+        console.error('Gemini Details API Error:', error);
         throw error;
     }
 }
